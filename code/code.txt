@@ -1,0 +1,275 @@
+
+#define ldata       PORTB               //LCD data port
+#define en          PORTCbits.RC5      // enable signal
+#define rs          PORTCbits.RC4      // enable signal
+
+
+#include<p18f4520.h>
+//Function Prototypes
+
+void msdelay (unsigned int time) //Function to generate delay
+{
+unsigned int i, j;
+ for (i = 0; i < time; i++)
+for (j = 0; j < 400; j++);//Calibrated for a 1 ms delay in MPLAB
+}
+
+void lcdcmd(unsigned char cmd) //Function to pass command to the LCD
+{
+    rs = 0;		// RS low : Instruction
+     msdelay(20);
+     en = 1;		// EN High
+     msdelay(20);
+ldata = (ldata & 0xF0)|((cmd>>4) & 0x0F); // send higher nibble
+     en = 0;		// EN Low
+     msdelay(20);
+     en = 1;
+     msdelay(20);
+     ldata = (ldata & 0xF0)|(cmd & 0x0F); // send lower nibble
+     en = 0;// EN Low
+     msdelay(20);
+}
+
+void lcddata(unsigned char data)//Function to write data to the LCD
+{
+     rs = 1;		// RS low : Instruction
+     msdelay(20);
+     en = 1;		// EN High
+     msdelay(20);
+     ldata = (ldata & 0xF0)|((data>>4) & 0x0F); // send higher nibble
+     en = 0;		// EN Low
+     msdelay(20);
+     en = 1;
+     msdelay(20);
+     ldata = (ldata & 0xF0)|(data & 0x0F); // send lower nibble
+     en = 0;// EN Low
+     msdelay(20);
+}
+
+void LCD_write_string(unsigned char *String)
+{
+   while(*String)
+  {
+   lcddata(*String);
+   String++;
+    }
+}
+
+void init_LCD(void)  // Function to initialise the LCD
+{
+   TRISB = 0x00; //set data port as output
+   TRISCbits.RC4 = 0;
+   TRISCbits.RC5 = 0;
+
+    lcdcmd(0x33);      //8 bit mode, 2 line,5x7 dots
+    msdelay(20);
+    lcdcmd(0x32);	// entry mode
+    msdelay(20);
+    lcdcmd(0x28);	//Display ON cursor OFF
+    msdelay(20);
+     lcdcmd(0x0E);	//Display ON cursor ON
+    msdelay(20);
+     lcdcmd(0x06);	//INCREMENT DATA IN RIGHT
+    msdelay(20);
+    lcdcmd(0x01);      //Clear display
+    msdelay(20);
+
+
+}
+
+
+void InitUART(void)
+{
+TRISCbits.RC6 = 0; //TX pin set as output
+TRISCbits.RC7 = 1; //RX pin set as input
+SPBRG = 0x81;         /* Serial Port Baud Rate Generator for 9600    */
+TXSTA = 0X24;         /* TXEN=1, SYNC=0, BRGH=1                      */
+RCSTA = 0X90;
+}
+char ch;
+char UART_Read()
+{
+  while(!RCIF);
+  ch = RCREG;
+  RCIF = 0;
+  return ch;
+}
+
+void UART_Write(char d)
+{
+TXREG = d;
+while(TXIF == 0);
+TXIF =0 ;
+}
+
+ void UART_Write_Text1(char *s)
+ {
+ while(*s)
+ UART_Write(*s++);
+ }
+
+void UART_Write_Text(unsigned char *text)
+{
+  int i;
+  for(i=0;text[i]!='\0';i++)
+    UART_Write(text[i]);
+}
+
+unsigned char GetChar(void)
+{
+while(!PIR1bits.RCIF); //Wait till receive buffer becomes full
+return RCREG; //Returned received data
+}
+char UART_Data_Ready()
+{
+  return RCIF;
+}
+
+read_char(void)
+{
+while (PIR1bits.RC1IF == 0)
+{
+if (RCSTA1bits.OERR == 1)
+{
+RCSTA1bits.OERR = 0;
+RCSTA1bits.CREN = 0;
+RCSTA1bits.CREN = 1;
+}
+}
+return RCREG1;
+}
+
+void UART_Read_Text(char *Output, unsigned int length)
+{
+  unsigned int i;
+  for(i=0;i<length;i++)
+  Output[i] = UART_Read();
+}
+
+char rfid[13];
+int i;
+void main()
+{
+    TRISCbits.RC4 = 0;
+    TRISCbits.RC5 = 0;
+    TRISB = 0x00;
+    TRISCbits.RC6 = 0;
+    TRISCbits.RC7 = 1;
+    TRISDbits.RD0 = 1;
+    TRISDbits.RD1 = 0;
+    PORTDbits.RD1 = 0;
+    init_LCD();
+    InitUART();
+    lcdcmd(0x80);
+    msdelay(20);
+    LCD_write_string("RFID BASE LUGAGE");
+    lcdcmd(0xC0);
+    msdelay(20);
+    LCD_write_string("CHECKING SYSTEM ");
+    msdelay(20);
+    lcdcmd(0x80);
+    while(1)
+    {
+        jump:
+        PORTDbits.RD1 = 0;
+        
+        lcdcmd(0x01);
+        LCD_write_string("Place Your Card:");
+        lcdcmd(0xc0);
+        for(i=0;i<12;){
+        rfid[i]=UART_Read();
+			i++;}
+        rfid[i]='\0';
+        lcdcmd(0x01);
+	lcdcmd(0x80);
+        LCD_write_string("ur card No. is: ");
+        lcdcmd(0xc0);
+        for(i=0;i<12;i++)
+        lcddata(rfid[i]);
+	msdelay(200);
+        if(rfid[11] == '7')
+        {
+        lcdcmd(0x01);
+	lcdcmd(0x80);
+        LCD_write_string("  SANKET PAWAR  ");
+        msdelay(500);
+        while(!(PORTDbits.RD0 == 0))
+        {
+
+            PORTDbits.RD1 = 0;
+  i = 0;          
+ for( i=0;i<3;)
+{
+            lcdcmd(0x01);
+	lcdcmd(0x80);
+        LCD_write_string(" METAL DETECTOR ");
+        lcdcmd(0xC0);
+               LCD_write_string("    TESTING     ");
+        msdelay(500);
+        i++;
+}
+   lcdcmd(0x01);
+        lcdcmd(0x80);
+        LCD_write_string("    THANK YOU   ");
+        msdelay(100);
+        lcdcmd(0xC0);
+        LCD_write_string("   VISIT AGAIN  ");
+        msdelay(1000);
+        goto jump;
+        }
+
+
+        PORTDbits.RD1 = 1;
+        lcdcmd(0x01);
+        lcdcmd(0x80);
+        LCD_write_string("METAL IS DETECTED");
+        msdelay(500);
+        lcdcmd(0xc0);
+        LCD_write_string("WITH SANKET'S BAG");
+        msdelay(1000);
+        goto jump;
+        }
+    
+     if(rfid[11] == '6')
+        {
+        lcdcmd(0x01);
+	lcdcmd(0x80);
+        LCD_write_string("   AMIT  PAWAR  ");
+        msdelay(500);
+        while(!(PORTDbits.RD0 == 0))
+        {
+            
+            PORTDbits.RD1 = 0;
+  i = 0;           
+for( i=0;i<3;)
+{
+            lcdcmd(0x01);
+	lcdcmd(0x80);
+        LCD_write_string(" METAL DETECTOR ");
+        lcdcmd(0xC0);
+               LCD_write_string("    TESTING     ");
+        msdelay(500);
+        i++;
+}
+   lcdcmd(0x01);
+        lcdcmd(0x80);
+        LCD_write_string("    THANK YOU   ");
+        msdelay(100);
+        lcdcmd(0xC0);
+        LCD_write_string("   VISIT AGAIN  ");
+        msdelay(1000);
+        goto jump;
+        }
+
+        PORTDbits.RD1 = 1;
+        lcdcmd(0x01);
+        lcdcmd(0x80);
+        LCD_write_string("METAL IS DETECTED");
+        msdelay(500);
+        lcdcmd(0xc0);
+        LCD_write_string("WITH AMIT'S BAG  ");
+        msdelay(1000);
+        goto jump;
+        }
+    
+    }}
